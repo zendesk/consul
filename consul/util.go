@@ -163,7 +163,7 @@ func activeInterfaceAddresses() ([]net.Addr, error) {
 		return nil, fmt.Errorf("Failed to get interfaces: %v", err)
 	}
 
-	reqFlags := net.FlagUp | net.FlagBroadcast | net.FlagMulticast
+	reqFlags := net.FlagUp
 	for _, iface := range interfaces {
 		if iface.Flags&reqFlags != reqFlags {
 			continue
