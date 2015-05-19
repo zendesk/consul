@@ -153,19 +153,19 @@ func isPrivateIP(ip_str string) bool {
 	return false
 }
 
-// Returns addresses from interfaces that is up and supports
-// both broadcast and multicast
+// Returns addresses from interfaces that is up
 func activeInterfaceAddresses() ([]net.Addr, error) {
-	var out []net.Addr
+	var upAddrs []net.Addr
+	var loAddrs []net.Addr
 
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get interfaces: %v", err)
 	}
 
-	reqFlags := net.FlagUp
 	for _, iface := range interfaces {
-		if iface.Flags&reqFlags != reqFlags {
+		// Require interface to be up
+		if iface.Flags&net.FlagUp == 0 {
 			continue
 		}
 
@@ -174,10 +174,19 @@ func activeInterfaceAddresses() ([]net.Addr, error) {
 			return nil, fmt.Errorf("Failed to get interface addresses: %v", err)
 		}
 
-		out = append(out, addresses...)
+		if iface.Flags&net.FlagLoopback != 0 {
+			loAddrs = append(loAddrs, addresses...)
+			continue
+		}
+
+		upAddrs = append(upAddrs, addresses...)
 	}
 
-	return out, nil
+	if len(upAddrs) == 0 {
+		return loAddrs, nil
+	}
+
+	return upAddrs, nil
 }
 
 // GetPrivateIP is used to return the first private IP address
