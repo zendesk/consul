@@ -14,6 +14,7 @@ import (
 	"github.com/armon/go-radix"
 	"github.com/armon/gomdb"
 	"github.com/hashicorp/consul/consul/structs"
+	"github.com/hashicorp/go-memdb"
 )
 
 const (
@@ -51,6 +52,7 @@ const (
 type StateStore struct {
 	logger            *log.Logger
 	path              string
+	db                *memdb.MemDB
 	env               *mdb.Env
 	nodeTable         *MDBTable
 	serviceTable      *MDBTable
@@ -129,6 +131,12 @@ func NewStateStore(gc *TombstoneGC, logOutput io.Writer) (*StateStore, error) {
 // NewStateStorePath is used to create a new state store at a given path
 // The path is cleared on closing.
 func NewStateStorePath(gc *TombstoneGC, path string, logOutput io.Writer) (*StateStore, error) {
+	// Create the db
+	db, err := memdb.NewMemDB(tableSchema)
+	if err != nil {
+		return nil, err
+	}
+
 	// Open the env
 	env, err := mdb.NewEnv()
 	if err != nil {
@@ -138,6 +146,7 @@ func NewStateStorePath(gc *TombstoneGC, path string, logOutput io.Writer) (*Stat
 	s := &StateStore{
 		logger:    log.New(logOutput, "", log.LstdFlags),
 		path:      path,
+		db:        db,
 		env:       env,
 		watch:     make(map[*MDBTable]*NotifyGroup),
 		kvWatch:   radix.New(),
@@ -2137,4 +2146,179 @@ func (s *StateSnapshot) ACLList() ([]*structs.ACL, error) {
 		out[i] = raw.(*structs.ACL)
 	}
 	return out, err
+}
+
+// tableSchema is the main schema for the in-memory state store.
+var tableSchema = &memdb.DBSchema{
+	Tables: map[string]*memdb.TableSchema{
+		"node": &memdb.TableSchema{
+			Name: "nodes",
+			Indexes: map[string]*memdb.IndexSchema{
+				"id": &memdb.IndexSchema{
+					Name:   "id",
+					Unique: true,
+					Indexer: &memdb.StringFieldIndex{
+						Field:     "Node",
+						Lowercase: true,
+					},
+				},
+			},
+		},
+		"service": &memdb.TableSchema{
+			Name: "services",
+			Indexes: map[string]*memdb.IndexSchema{
+				"id": &memdb.IndexSchema{
+					Name:   "id",
+					Unique: true,
+					Indexer: &memdb.CompoundIndex{
+						Indexes: []memdb.Indexer{
+							&memdb.StringFieldIndex{
+								Field: "Node",
+							},
+							&memdb.StringFieldIndex{
+								Field: "ServiceID",
+							},
+						},
+					},
+				},
+				"service": &memdb.IndexSchema{
+					Name:         "service",
+					AllowMissing: true,
+					Indexer: &memdb.StringFieldIndex{
+						Field:     "ServiceName",
+						Lowercase: true,
+					},
+				},
+			},
+		},
+		"check": &memdb.TableSchema{
+			Name: "checks",
+			Indexes: map[string]*memdb.IndexSchema{
+				"id": &memdb.IndexSchema{
+					Name:   "id",
+					Unique: true,
+					Indexer: &memdb.CompoundIndex{
+						Indexes: []memdb.Indexer{
+							&memdb.StringFieldIndex{
+								Field: "Node",
+							},
+							&memdb.StringFieldIndex{
+								Field: "CheckID",
+							},
+						},
+					},
+				},
+				"status": &memdb.IndexSchema{
+					Name: "status",
+					Indexer: &memdb.StringFieldIndex{
+						Field: "Status",
+					},
+				},
+				"service": &memdb.IndexSchema{
+					Name:         "service",
+					AllowMissing: true,
+					Indexer: &memdb.StringFieldIndex{
+						Field: "ServiceName",
+					},
+				},
+				"node": &memdb.IndexSchema{
+					Name:         "node",
+					AllowMissing: true,
+					Indexer: &memdb.CompoundIndex{
+						Indexes: []memdb.Indexer{
+							&memdb.StringFieldIndex{
+								Field: "ServiceID",
+							},
+						},
+					},
+				},
+			},
+		},
+		"kvs": &memdb.TableSchema{
+			Name: "kvs",
+			Indexes: map[string]*memdb.IndexSchema{
+				"id": &memdb.IndexSchema{
+					Name:   "id",
+					Unique: true,
+					Indexer: &memdb.StringFieldIndex{
+						Field: "Key",
+					},
+				},
+				// TODO(ryanuber) Do we need an id_prefix here?
+				"session": &memdb.IndexSchema{
+					Name:         "session",
+					AllowMissing: true,
+					Indexer: &memdb.StringFieldIndex{
+						Field: "Session",
+					},
+				},
+			},
+		},
+		"tombstone": &memdb.TableSchema{
+			Name: "tombstone",
+			Indexes: map[string]*memdb.IndexSchema{
+				"id": &memdb.IndexSchema{
+					Name:   "id",
+					Unique: true,
+					Indexer: &memdb.StringFieldIndex{
+						Field: "Key",
+					},
+				},
+				// TODO(ryanuber) Do we need an id_prefix here?
+			},
+		},
+		"session": &memdb.TableSchema{
+			Name: "session",
+			Indexes: map[string]*memdb.IndexSchema{
+				"id": &memdb.IndexSchema{
+					Name:   "id",
+					Unique: true,
+					Indexer: &memdb.StringFieldIndex{
+						Field: "ID",
+					},
+				},
+				"node": &memdb.IndexSchema{
+					Name:         "node",
+					AllowMissing: true,
+					Indexer: &memdb.StringFieldIndex{
+						Field: "Node",
+					},
+				},
+			},
+		},
+		"session_check": &memdb.TableSchema{
+			Name: "session_check",
+			Indexes: map[string]*memdb.IndexSchema{
+				"id": &memdb.IndexSchema{
+					Name:   "id",
+					Unique: true,
+					Indexer: &memdb.CompoundIndex{
+						Indexes: []memdb.Indexer{
+							&memdb.StringFieldIndex{
+								Field: "Node",
+							},
+							&memdb.StringFieldIndex{
+								Field: "CheckID",
+							},
+							&memdb.StringFieldIndex{
+								Field: "Session",
+							},
+						},
+					},
+				},
+			},
+		},
+		"acl": &memdb.TableSchema{
+			Name: "acl",
+			Indexes: map[string]*memdb.IndexSchema{
+				"id": &memdb.IndexSchema{
+					Name:   "id",
+					Unique: true,
+					Indexer: &memdb.StringFieldIndex{
+						Field: "ID",
+					},
+				},
+			},
+		},
+	},
 }
