@@ -19,8 +19,10 @@ import (
 /*
  * Contains an entry for each private block:
  * 10.0.0.0/8
+ * 127.0.0.0/8
  * 172.16.0.0/12
- * 192.168/16
+ * 192.168.0.0/16
+ * 169.254.0.0/16
  */
 var privateBlocks []*net.IPNet
 
