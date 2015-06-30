@@ -41,7 +41,7 @@ func (s *serverParts) String() string {
 
 func init() {
 	// Add each private block
-	privateBlocks = make([]*net.IPNet, 3)
+	privateBlocks = make([]*net.IPNet, 4)
 	_, block, err := net.ParseCIDR("10.0.0.0/8")
 	if err != nil {
 		panic(fmt.Sprintf("Bad cidr. Got %v", err))
@@ -59,6 +59,12 @@ func init() {
 		panic(fmt.Sprintf("Bad cidr. Got %v", err))
 	}
 	privateBlocks[2] = block
+
+	_, block, err = net.ParseCIDR("127.0.0.0/8")
+	if err != nil {
+		panic(fmt.Sprintf("Bad cidr. Got %v", err))
+	}
+	privateBlocks[3] = block
 }
 
 // strContains checks if a list contains a string
